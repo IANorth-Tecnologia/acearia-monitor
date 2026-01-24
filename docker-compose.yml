@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:alpine
+    container_name: redis-acearia
+    ports:
+      - "6379:6379"
+    networks:
+      - acearia-net
+
+  backend:
+    build: ./backend
+    container_name: api-acearia
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - acearia-net
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./backend
+    container_name: worker-acearia
+    environment:
+      - REDIS_HOST=redis
+      # '0' para webcam. Se estiver na fábrica, coloque a URL RTSP aqui.
+      - RTSP_URL=rtsp://admin:eletricasnb2021@10.6.51.75:554/cam/realmonitor?channel=1&subtype=1
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./models:/app/models
+    networks:
+      - acearia-net
+    command: python worker_safety.py
+
+  frontend:
+    build: ./frontend
+    container_name: ui-acearia
+    ports:
+      - "8898:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - acearia-net
+
+networks:
+  acearia-net:
+    driver: bridge
