@@ -27,23 +27,29 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 async def redis_listener():
-    print(f"Iniciando Listener Redis no host: {REDIS_HOST}")
+    print(f"Iniciando Listener Redis (Modo Seguro) em: {REDIS_HOST}")
     while True:
         try:
             r = redis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
             pubsub = r.pubsub()
             await pubsub.subscribe("safety_alerts")
-            print("Inscrito no canal 'safety_alerts' com sucesso!")
-            
+            print("Redis PubSub conectado! Escutando...")
+
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                
                 if message and message["type"] == "message":
                     await manager.broadcast(message["data"])
+                
                 await asyncio.sleep(0.01) 
 
         except Exception as e:
-            print(f"Erro na conexão com Redis: {e}. Tentando em 3s...")
+            print(f"Erro Redis: {e}. Reconectando em 3s...")
             await asyncio.sleep(3)
+
+@router.on_event("startup")
+async def startup_event():
+    asyncio.create_task(redis_listener())
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
