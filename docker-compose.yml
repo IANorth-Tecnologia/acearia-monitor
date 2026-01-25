@@ -11,7 +11,7 @@ services:
     build: ./backend
     container_name: api-acearia
     ports:
-      - "8000:8000"
+      - "8033:8000"
     environment:
       - REDIS_HOST=redis
     depends_on:
@@ -42,7 +42,7 @@ services:
     build: ./frontend
     container_name: ui-acearia
     ports:
-      - "8898:3000"
+      - "8023:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
