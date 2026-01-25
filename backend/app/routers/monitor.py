@@ -5,7 +5,6 @@ import redis as redis_sync
 import asyncio
 import os
 import time
-import json
 
 router = APIRouter()
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -29,59 +28,41 @@ manager = ConnectionManager()
 
 async def redis_listener():
     print(f"Iniciando Listener Redis (Modo Seguro) em: {REDIS_HOST}")
-    
     while True:
         try:
             r = redis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
             pubsub = r.pubsub()
             await pubsub.subscribe("safety_alerts")
-            print("Redis PubSub conectado! Escutando mensagens...")
+            print("Redis PubSub conectado! Escutando...")
 
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                
                 if message and message["type"] == "message":
                     await manager.broadcast(message["data"])
-                
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.01) 
 
         except Exception as e:
-            print(f"Erro no Redis Listener: {e}. Reconectando em 3s...")
+            print(f"Erro Redis: {e}. Reconectando em 3s...")
             await asyncio.sleep(3)
-        finally:
-            try: await r.close()
-            except: pass
-
-@router.on_event("startup")
-async def startup_event():
-    asyncio.create_task(redis_listener())
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        while True:
-            await websocket.receive_text()
+        while True: await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-    except Exception:
         manager.disconnect(websocket)
 
 @router.get("/video_feed")
 def video_feed():
     r_sync = redis_sync.Redis(host=REDIS_HOST, decode_responses=False)
-    
     def generate():
         while True:
             try:
                 frame = r_sync.get("live_frame")
                 if frame:
                     yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                    time.sleep(0.04) 
-                else:
-                    time.sleep(0.1) 
-            except Exception as e:
-                print(f"Erro Video Feed: {e}")
-                time.sleep(1)
-
+                    time.sleep(0.04)
+                else: time.sleep(0.1)
+            except: time.sleep(1)
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace;boundary=frame")

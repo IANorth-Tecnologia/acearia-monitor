@@ -28,6 +28,7 @@ export const Dashboard = () => {
     ws.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
+        console.log("DADOS RECEBIDOS:", parsed);
         setData({
             status: parsed.status,
             mensagem: parsed.mensagem,
