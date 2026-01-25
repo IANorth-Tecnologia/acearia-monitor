@@ -24,6 +24,8 @@ export const Dashboard = () => {
 
   useEffect(() => {
     const ws = createWebSocketConnection();
+
+        ws.onopen = () => console.log("WebSocket CONECTADO! ✅");
     
     ws.onmessage = (event) => {
       try {
