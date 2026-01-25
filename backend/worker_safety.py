@@ -11,94 +11,139 @@ RTSP_URL = os.getenv("RTSP_URL", DEFAULT_RTSP)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 MODEL_PATH = "models/pan28.pt"
 
-CLASS_ID_PANELA = 0
-CLASS_ID_GARRA = 1
-
 def run():
     try:
         r = redis.Redis(host=REDIS_HOST, port=6379, db=0)
         r.ping()
         print(f"[WORKER] Conectado ao Redis em {REDIS_HOST}")
     except Exception as e:
-        print(f"[WORKER] ERRO: Redis inacessível. {e}")
+        print(f"[WORKER] ERRO CRÍTICO: Redis inacessível. {e}")
         return
 
-    print(f"[WORKER] Inicializando Segmentação: {MODEL_PATH}")
+    print(f"[WORKER] Carregando IA: {MODEL_PATH}")
     try:
         segmentation_engine = ObjectSegmentation(MODEL_PATH)
-        print("[WORKER] Modelo carregado.")
+        print("[WORKER] Modelo carregado com sucesso.")
     except Exception as e:
-        print(f"[WORKER] Erro modelo: {e}. Usando fallback.")
-        segmentation_engine = ObjectSegmentation("yolov8n-seg.pt")
+        print(f"[WORKER] Erro ao carregar modelo: {e}")
+        return
 
     while True:
         print(f"[WORKER] Conectando câmera: {RTSP_URL}")
         cap = cv2.VideoCapture(RTSP_URL)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
+        
         if not cap.isOpened():
-            print("[WORKER] Erro câmera. Retry 5s...")
+            print("[WORKER] Erro ao abrir câmera. Tentando em 5s...")
             time.sleep(5)
             continue
 
         while True:
             success, frame = cap.read()
             if not success:
-                print("[WORKER] Frame drop. Reiniciando...")
+                print("[WORKER] Perda de sinal de vídeo.")
                 break
 
-            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, conf=0.5)
-            
+            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, conf=0.4)
             frame_visual = frame.copy()
-            panelas_box = []
-            garras_box = []
+            
+            ganchos = []
+            suportes = []
+            travas = []
+            panelas = []
 
             for bbox, class_id, contour, score in zip(bboxes, class_ids, contours, scores):
-                color = segmentation_engine.colors[class_id]
-                frame_visual = segmentation_engine.draw_mask(frame_visual, [contour], color, alpha=0.4)
+                raw_name = segmentation_engine.classes[class_id]
+                name = str(raw_name).lower()
                 
+                color = segmentation_engine.colors[class_id]
+                label = name
+
+                if 'gancho' in name:
+                    ganchos.append(bbox)
+                    label = "GANCHO"
+                    color = (0, 0, 255) 
+                elif 'suportepanela' in name:
+                    suportes.append(bbox)
+                    label = "SUPORTE"
+                    color = (255, 0, 0) 
+                elif 'trava' in name or 'travado' in name: 
+                    travas.append(bbox)
+                    label = "TRAVA"
+                    color = (0, 255, 0) 
+                elif 'panela' in name or 'forno' in name:
+                    panelas.append(bbox)
+                    label = "PANELA"
+
                 x, y, x2, y2 = bbox
+                segmentation_engine.draw_mask(frame_visual, [contour], color, alpha=0.3)
                 cv2.rectangle(frame_visual, (x, y), (x2, y2), color, 2)
-                name = segmentation_engine.classes[class_id]
-                cv2.putText(frame_visual, f"{name}", (x, y - 10), cv2.FONT_HERSHEY_PLAIN, 1.5, color, 2)
+                cv2.putText(frame_visual, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-                if class_id == CLASS_ID_PANELA: panelas_box.append(bbox)
-                elif class_id == CLASS_ID_GARRA: garras_box.append(bbox)
+            status = "AGUARDANDO"
+            is_safe = True
+            mensagem_detalhe = "Monitorando área..."
 
-            status = "MONITORANDO"
-            perigo = False
-            
-            if len(panelas_box) > 0:
-                encaixes = 0
-                for px1, py1, px2, py2 in panelas_box:
-                    panela_area = (px2 - px1) * (py2 - py1)
-                    for gx1, gy1, gx2, gy2 in garras_box:
-                        ix1 = max(px1, gx1); iy1 = max(py1, gy1)
-                        ix2 = min(px2, gx2); iy2 = min(py2, gy2)
-                        inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-                        if inter > (panela_area * 0.1): encaixes += 1
+            if len(ganchos) > 0 and len(suportes) > 0:
+                acoplados = 0
+                travados_corretamente = 0
+                
+                for gx1, gy1, gx2, gy2 in ganchos:
+                    for sx1, sy1, sx2, sy2 in suportes:
+                        ix1 = max(gx1, sx1); iy1 = max(gy1, sy1)
+                        ix2 = min(gx2, sx2); iy2 = min(gy2, sy2)
+                        inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                        
+                        if inter_area > 0:
+                            acoplados += 1
+                            
+                            busca_x1, busca_y1 = min(gx1, sx1) - 50, min(gy1, sy1) - 50
+                            busca_x2, busca_y2 = max(gx2, sx2) + 50, max(gy2, sy2) + 50
+                            
+                            for tx1, ty1, tx2, ty2 in travas:
+                                t_center_x = (tx1 + tx2) / 2
+                                t_center_y = (ty1 + ty2) / 2
+                                if (busca_x1 < t_center_x < busca_x2) and (busca_y1 < t_center_y < busca_y2):
+                                    travados_corretamente += 1
 
-                if len(garras_box) == 0:
-                    status = "PERIGO: CARGA SOLTA"
-                    perigo = True
-                elif encaixes == 0:
-                    status = "ATENÇÃO: DESALINHADO"
-                    perigo = True
+                if acoplados > 0:
+                    if travados_corretamente > 0:
+                        status = "SEGURO: TRAVADO"
+                        mensagem_detalhe = "Gancho acoplado e trava detectada."
+                        is_safe = True
+                        cv2.putText(frame_visual, "SEGURO", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 4)
+                    else:
+                        status = "PERIGO: DESTRAVADO"
+                        mensagem_detalhe = "ATENÇÃO: Gancho sem trava de segurança!"
+                        is_safe = False
+                        cv2.putText(frame_visual, "PERIGO", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
                 else:
-                    status = "SEGURO: ACOPLADO"
-                    perigo = False
+                    status = "APROXIMAÇÃO"
+                    mensagem_detalhe = "Gancho próximo ao suporte."
+
+            elif len(ganchos) > 0:
+                status = "MOVIMENTAÇÃO"
+                mensagem_detalhe = "Gancho em movimento."
 
             _, buffer = cv2.imencode('.jpg', frame_visual)
-            r.set("live_frame", buffer.tobytes())
-            r.publish("safety_alerts", json.dumps({
-                "status": status, 
-                "mensagem": f"P: {len(panelas_box)} | G: {len(garras_box)}", 
-                "perigo": perigo,
-                "panelas": len(panelas_box),
-                "garras": len(garras_box)
-            }))
+            try:
+                r.set("live_frame", buffer.tobytes())
+                
+                packet = {
+                    "status": status,
+                    "mensagem": mensagem_detalhe,
+                    "perigo": not is_safe,
+                    "panelas": len(panelas),
+                    "garras": len(ganchos), 
+                    "travas": len(travas)   
+                }
+                r.publish("safety_alerts", json.dumps(packet))
+            except Exception as e:
+                print(f"[WORKER] Erro Redis: {e}")
+
+            time.sleep(0.033)
 
         cap.release()
+        print("[WORKER] Reiniciando conexão...")
 
 if __name__ == "__main__":
     run()

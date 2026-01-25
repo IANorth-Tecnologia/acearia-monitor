@@ -6,13 +6,18 @@ import { FiMonitor } from 'react-icons/fi';
 import { createWebSocketConnection, getVideoStreamUrl } from '../services/api';
 import type { DashboardData } from '../types';
 
+interface ExtendedDashboardData extends DashboardData {
+    travas?: number;
+}
+
 export const Dashboard = () => {
-  const [data, setData] = useState<DashboardData>({
+  const [data, setData] = useState<ExtendedDashboardData>({
     status: "CONECTANDO...",
     mensagem: "Iniciando sistema...",
     perigo: false,
     panelas: 0,
-    garras: 0
+    garras: 0,
+    travas: 0
   });
 
   const videoUrl = getVideoStreamUrl();
@@ -22,8 +27,15 @@ export const Dashboard = () => {
     
     ws.onmessage = (event) => {
       try {
-        const parsed: DashboardData = JSON.parse(event.data);
-        setData(parsed);
+        const parsed = JSON.parse(event.data);
+        setData({
+            status: parsed.status,
+            mensagem: parsed.mensagem,
+            perigo: parsed.perigo,
+            panelas: parsed.panelas || 0,
+            garras: parsed.garras || 0,
+            travas: parsed.travas || 0
+        });
       } catch (e) {
         console.error("Erro no WS:", e);
       }
@@ -37,9 +49,10 @@ export const Dashboard = () => {
   return (
     <ThemeProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-background-primary transition-colors duration-300 font-sans">
+        
         <header className="bg-white dark:bg-background-secondary border-b border-gray-200 dark:border-background-tertiary px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
             <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-accent-primary to-blue-600 rounded-lg shadow-lg text-white">
+                <div className="p-2 bg-blue-600 rounded-lg shadow-lg text-white">
                     <FiMonitor className="w-6 h-6" />
                 </div>
                 <div>
@@ -58,7 +71,7 @@ export const Dashboard = () => {
                     <div className="bg-white dark:bg-background-secondary p-1 rounded-xl border border-gray-200 dark:border-background-tertiary shadow-sm">
                         <VideoFeed 
                             streamUrl={videoUrl}
-                            isDanger={data.perigo}
+                            isDanger={data.perigo} 
                         />
                     </div>
                 </div>
@@ -66,8 +79,10 @@ export const Dashboard = () => {
                 <div className="lg:col-span-2">
                     <SafetyPanel 
                         status={data.status}
-                        isDanger={data.perigo}
-                        stats={{ panelas: data.panelas, garras: data.garras }}
+                        isSafe={!data.perigo}        
+                        ladleCount={data.panelas}    
+                        clawCount={data.garras}     
+                        lockCount={data.travas}      
                     />
                 </div>
             </div>
@@ -76,3 +91,5 @@ export const Dashboard = () => {
     </ThemeProvider>
   );
 };
+
+export default Dashboard;
