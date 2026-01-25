@@ -15,8 +15,10 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        print(f"Cliente conectado. Total: {len(self.active_connections)}") 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections: self.active_connections.remove(websocket)
+        print(f"Cliente desconectado. Total: {len(self.active_connections)}")
     async def broadcast(self, message: str):
         for connection in self.active_connections[:]:
             try: await connection.send_text(message)
@@ -25,21 +27,26 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 async def redis_listener():
-    try:
-        r = redis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
-        pubsub = r.pubsub()
-        await pubsub.subscribe("safety_alerts")
-        async for message in pubsub.listen():
-            if message["type"] == "message":
-                await manager.broadcast(message["data"])
-    except Exception as e:
-        print(f"Erro Listener: {e}")
+    print(f"Iniciando Listener do Redis no host: {REDIS_HOST}")
+    while True: 
+        try:
+            r = redis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
+            pubsub = r.pubsub()
+            await pubsub.subscribe("safety_alerts")
+            print("Inscrito no canal 'safety_alerts' com sucesso!")
+            
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    await manager.broadcast(message["data"])
+        except Exception as e:
+            print(f"Erro na conexão com Redis (tentando novamente em 3s): {e}")
+            await asyncio.sleep(3) 
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        while True: await websocket.receive_text()
+        while True: await websocket.receive_text() 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -48,10 +55,15 @@ def video_feed():
     r = redis_sync.Redis(host=REDIS_HOST, decode_responses=False)
     def generate():
         while True:
-            frame = r.get("live_frame")
-            if frame:
-                yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                time.sleep(0.04)
-            else:
-                time.sleep(0.1)
+            try:
+                frame = r.get("live_frame")
+                if frame:
+                    yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                    time.sleep(0.04) 
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                print(f"Erro frame: {e}")
+                time.sleep(1)
+                
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace;boundary=frame")
