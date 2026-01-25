@@ -3,6 +3,8 @@ import redis
 import json
 import os
 import time
+import threading
+import queue
 import numpy as np
 from object_segmentation import ObjectSegmentation
 
@@ -10,6 +12,36 @@ DEFAULT_RTSP = "rtsp://admin:eletricasnb2021@10.6.51.75:554/cam/realmonitor?chan
 RTSP_URL = os.getenv("RTSP_URL", DEFAULT_RTSP)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 MODEL_PATH = "models/pan28.pt"
+
+
+class VideoCaptureThread:
+    def __init__(self, src):
+        self.cap = cv2.VideoCapture(src)
+        self.q = queue.Queue(maxsize=1) 
+        self.stopped = False
+        self.thread = threading.Thread(target=self._reader, daemon=True)
+        self.thread.start()
+
+    def _reader(self):
+        while not self.stopped:
+            ret, frame = self.cap.read()
+            if not ret: 
+                break
+            if not self.q.empty():
+                try: 
+                    self.q.get_nowait() 
+                except queue.Empty: 
+                    pass
+            self.q.put(frame)
+
+    def read(self):
+        return self.q.get() 
+
+    def release(self):
+        self.stopped = True
+        self.cap.release()
+
+
 
 def run():
     try:
@@ -23,27 +55,32 @@ def run():
     print(f"[WORKER] Carregando IA: {MODEL_PATH}")
     try:
         segmentation_engine = ObjectSegmentation(MODEL_PATH)
+
         print("[WORKER] Modelo carregado com sucesso.")
     except Exception as e:
         print(f"[WORKER] Erro ao carregar modelo: {e}")
         return
 
-    while True:
-        print(f"[WORKER] Conectando câmera: {RTSP_URL}")
-        cap = cv2.VideoCapture(RTSP_URL)
-        
-        if not cap.isOpened():
-            print("[WORKER] Erro ao abrir câmera. Tentando em 5s...")
-            time.sleep(5)
-            continue
+    print(f"[WORKER] Iniciando stream: {RTSP_URL}")
+    cam = VideoCaptureThread(RTSP_URL)
 
+
+
+
+    while True:
+        #cap = cv2.VideoCapture(RTSP_URL)
+
+        frame = cam.read()
+        if frame is None: continue
+        
+        
         while True:
-            success, frame = cap.read()
+            success, frame = cam.read()
             if not success:
                 print("[WORKER] Perda de sinal de vídeo.")
                 break
 
-            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, conf=0.4)
+            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, imgsz=320, conf=0.25)
             frame_visual = frame.copy()
             
             ganchos = []
@@ -52,7 +89,7 @@ def run():
             panelas = []
 
             for bbox, class_id, contour, score in zip(bboxes, class_ids, contours, scores):
-                raw_name = segmentation_engine.classes[class_id]
+                raw_name = str(segmentation_engine.classes)[class_id]
                 name = str(raw_name).lower()
                 
                 color = segmentation_engine.colors[class_id]
@@ -134,7 +171,8 @@ def run():
                     "perigo": not is_safe,
                     "panelas": len(panelas),
                     "garras": len(ganchos), 
-                    "travas": len(travas)   
+                    "travas": len(travas),
+                    "timestamp": time.time()
                 }
                 r.publish("safety_alerts", json.dumps(packet))
             except Exception as e:
@@ -142,7 +180,7 @@ def run():
 
             time.sleep(0.033)
 
-        cap.release()
+        cam.release()
         print("[WORKER] Reiniciando conexão...")
 
 if __name__ == "__main__":
