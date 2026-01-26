@@ -69,7 +69,7 @@ export const Dashboard = () => {
                 </div>
                 <div>
                     <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
-                        Acearia <span className="text-blue-500">Monitor</span>
+                        Monitoramento de trava <span className="text-blue-500">da panela </span>
                     </h1>
                 </div>
             </div>
