@@ -11,101 +11,95 @@ interface ExtendedDashboardData extends DashboardData {
 }
 
 export const Dashboard = () => {
+  const [data, setData] = useState<ExtendedDashboardData>({
+    status: "CONECTANDO...",
+    mensagem: "Iniciando sistema...",
+    perigo: false,
+    panelas: 0,
+    garras: 0,
+    travas: 0
+  });
 
-    const [isOnline, setIsOnline] = useState(false);
-    const [lastUpdate, setLastUpdate] = useState(Date.now());
-    const [data, setData] = useState<ExtendedDashboardData>({
-        status: "CONECTANDO...",
-        mensagem: "Iniciando sistema...",
-        perigo: false,
-        panelas: 0,
-        garras: 0,
-        travas: 0
-    });
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const videoUrl = getVideoStreamUrl();
 
-    const videoUrl = getVideoStreamUrl();
+  useEffect(() => {
+    const ws = createWebSocketConnection();
 
-    useEffect(() => {
-        const ws = createWebSocketConnection();
+    ws.onopen = () => console.log("WebSocket CONECTADO! ✅");
+    
+    ws.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        setLastUpdate(Date.now());
+        setIsOnline(true);
+        
+        setData({
+            status: parsed.status,
+            mensagem: parsed.mensagem,
+            perigo: parsed.perigo,
+            panelas: parsed.panelas || 0,
+            garras: parsed.garras || 0,
+            travas: parsed.travas || 0
+        });
+      } catch (e) {
+        console.error("Erro no WS:", e);
+      }
+    };
 
-        ws.onopen = () => console.log("WebSocket CONECTADO! ✅");
+    const checker = setInterval(() => {
+        if (Date.now() - lastUpdate > 3000) setIsOnline(false);
+    }, 2000);
 
-        ws.onmessage = (event) => {
-            try {
-                const parsed = JSON.parse(event.data);
-                setLastUpdate(Date.now());
-                setIsOnline(true);
-                console.log("DADOS RECEBIDOS:", parsed);
-                setData({
-                    status: parsed.status,
-                    mensagem: parsed.mensagem,
-                    perigo: parsed.perigo,
-                    panelas: parsed.panelas || 0,
-                    garras: parsed.garras || 0,
-                    travas: parsed.travas || 0
-                });
-            } catch (e) {
-                console.error("Erro no WS:", e);
-            }
-        };
+    return () => {
+        if(ws.readyState === 1) ws.close();
+        clearInterval(checker);
+    };
+  }, [lastUpdate]);
 
-        const checker = setInterval(() => {
-            if (Date.now() - lastUpdate > 3000) { 
-                setIsOnline(false);
-            }
-        }, 2000);
-
-        return () => {
-            ws.close();
-            clearInterval(checker);
-        };
-    }, [lastUpdate]);
-
-    return (
-        <ThemeProvider>
-            <div className="min-h-screen bg-gray-50 dark:bg-background-primary transition-colors duration-300 font-sans">
-
-                <header className="bg-white dark:bg-background-secondary border-b border-gray-200 dark:border-background-tertiary px-6 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-600 rounded-lg shadow-lg text-white">
-                            <FiMonitor className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-900 dark:text-text-primary leading-tight">
-                                Acearia <span className="text-accent-primary">Monitor</span>
-                            </h1>
-                            <p className="text-xs text-gray-500 dark:text-text-tertiary">Detecção de Riscos em Panelas</p>
-                        </div>
-                    </div>
-                    <ThemeToggle />
-                </header>
-
-                <main className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                        <div className="lg:col-span-3 space-y-4">
-                            <div className="bg-white dark:bg-background-secondary p-1 rounded-xl border border-gray-200 dark:border-background-tertiary shadow-sm">
-                                <VideoFeed 
-                                    streamUrl={videoUrl}
-                                    isDanger={data.perigo}
-                                    isOnline={isOnline}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="lg:col-span-2">
-                            <SafetyPanel 
-                                status={data.status}
-                                isSafe={!data.perigo}        
-                                ladleCount={data.panelas}    
-                                clawCount={data.garras}     
-                                lockCount={data.travas}      
-                            />
-                        </div>
-                    </div>
-                </main>
+  return (
+    <ThemeProvider>
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 font-sans flex flex-col">
+        
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
+            <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-lg shadow-md text-white">
+                    <FiMonitor className="w-5 h-5" />
+                </div>
+                <div>
+                    <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
+                        Acearia <span className="text-blue-500">Monitor</span>
+                    </h1>
+                </div>
             </div>
-        </ThemeProvider>
-    );
+            <ThemeToggle />
+        </header>
+
+        <main className="flex-grow p-4 lg:p-6 max-w-[1920px] mx-auto w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-[500px]">
+                
+                <div className="lg:col-span-8 flex flex-col">
+                    <div className="bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-700 flex-grow relative">
+                        <VideoFeed 
+                            streamUrl={videoUrl}
+                            isDanger={data.perigo}
+                            isOnline={isOnline}
+                        />
+                    </div>
+                </div>
+
+                <div className="lg:col-span-4 flex flex-col h-full">
+                    <SafetyPanel 
+                        status={data.status}
+                        isSafe={!data.perigo}
+                    />
+                </div>
+            </div>
+        </main>
+      </div>
+    </ThemeProvider>
+  );
 };
 
 export default Dashboard;

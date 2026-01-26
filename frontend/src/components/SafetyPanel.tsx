@@ -1,76 +1,66 @@
 import React from 'react';
-import { FiAlertTriangle, FiCheckCircle, FiBox, FiAnchor, FiActivity, FiLock } from 'react-icons/fi';
+import { FiActivity, FiLock, FiUnlock } from 'react-icons/fi';
 
 interface SafetyPanelProps {
   status: string;
-  isSafe: boolean;  
-  ladleCount: number;   
-  clawCount: number;    
-  lockCount?: number;   
+  isSafe: boolean;
 }
 
-const InfoCard: React.FC<{ icon: React.ReactNode; label: string; value: string | number; colorClass?: string }> = ({ icon, label, value, colorClass = "text-accent-primary" }) => (
-  <div className="bg-white dark:bg-background-secondary p-4 rounded-lg flex items-center border border-gray-200 dark:border-background-tertiary shadow-sm transition-colors duration-300">
-    <div className={`mr-4 text-3xl ${colorClass}`}>
-      {icon}
-    </div>
-    <div>
-      <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-text-tertiary">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 dark:text-text-primary">{value}</p>
-    </div>
-  </div>
-);
-
-export const SafetyPanel: React.FC<SafetyPanelProps> = ({ 
-  status, 
-  isSafe, 
-  ladleCount, 
-  clawCount, 
-  lockCount = 0 
-}) => {
+export const SafetyPanel: React.FC<SafetyPanelProps> = ({ status, isSafe }) => {
   
-  const statusConfig = isSafe 
-    ? { color: 'text-status-success', border: 'border-status-success', icon: <FiCheckCircle className="w-8 h-8" />, message: "Monitoramento ativo e seguro." }
-    : { color: 'text-status-danger', border: 'border-status-danger', icon: <FiAlertTriangle className="w-8 h-8" />, message: "INTERVENÇÃO IMEDIATA NECESSÁRIA" };
+  const getStatusConfig = () => {
+    if (!isSafe) {
+      return {
+        bgColor: 'bg-red-600',
+        borderColor: 'border-red-400',
+        textColor: 'text-white',
+        icon: <FiUnlock className="w-24 h-24 mb-4 animate-bounce" />, 
+        title: "PERIGO: DESTRAVADO",
+        subtext: "PARE A OPERAÇÃO IMEDIATAMENTE",
+        animation: "animate-pulse" 
+      };
+    }
+    
+    if (status.includes("SEGURO") || status.includes("TRAVADO")) {
+      return {
+        bgColor: 'bg-green-600',
+        borderColor: 'border-green-400',
+        textColor: 'text-white',
+        icon: <FiLock className="w-24 h-24 mb-4" />, 
+        title: "OPERAÇÃO SEGURA",
+        subtext: "Ganchos Acoplados e Travados",
+        animation: ""
+      };
+    }
+
+    return {
+      bgColor: 'bg-gray-800',
+      borderColor: 'border-gray-600',
+      textColor: 'text-gray-300',
+      icon: <FiActivity className="w-24 h-24 mb-4 text-blue-400" />,
+      title: status || "MONITORANDO",
+      subtext: "Aguardando detecção...",
+      animation: ""
+    };
+  };
+
+  const config = getStatusConfig();
 
   return (
-    <div className="bg-white dark:bg-background-secondary rounded-xl p-6 shadow-lg border border-gray-200 dark:border-background-tertiary h-full flex flex-col">
+    <div className={`h-full rounded-2xl border-4 shadow-2xl overflow-hidden flex flex-col justify-center items-center text-center p-8 transition-all duration-500 ${config.bgColor} ${config.borderColor} ${config.animation}`}>
       
-      <div className={`mb-6 p-6 rounded-xl border-l-8 ${isSafe ? 'bg-green-50 dark:bg-green-900/10' : 'bg-red-50 dark:bg-red-900/10'} ${statusConfig.border} transition-all duration-300`}>
-        <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-gray-500 dark:text-text-secondary">Status Operacional</h2>
-            <div className={`animate-pulse ${statusConfig.color}`}>{statusConfig.icon}</div>
-        </div>
-        <p className={`text-4xl font-black ${statusConfig.color} tracking-tight uppercase`}>
-            {status}
-        </p>
-        <p className="text-sm mt-3 text-gray-600 dark:text-text-tertiary">
-            {statusConfig.message}
-        </p>
+      <div className="text-white drop-shadow-lg">
+        {config.icon}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <InfoCard icon={<FiBox />} label="Panelas" value={ladleCount} colorClass="text-blue-500"/>
-        <InfoCard icon={<FiAnchor />} label="Ganchos" value={clawCount} colorClass="text-yellow-500"/>
-        
-        <InfoCard 
-            icon={<FiLock />} 
-            label="Travas" 
-            value={lockCount} 
-            colorClass={lockCount > 0 ? "text-green-500" : "text-gray-400"}
-        />
-      </div>
+      <h2 className={`text-4xl md:text-5xl font-black uppercase tracking-wider mb-4 drop-shadow-md text-white`}>
+        {config.title}
+      </h2>
 
-      <div className="mt-6 bg-white dark:bg-background-secondary p-4 rounded-lg border border-gray-200 dark:border-background-tertiary flex-grow shadow-sm">
-        <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-background-tertiary pb-2">
-            <FiActivity className="text-gray-400" />
-            <span className="font-semibold text-gray-700 dark:text-text-secondary">Atividade Recente</span>
-        </div>
-        <div className="space-y-2 text-xs text-gray-500 dark:text-text-tertiary font-mono">
-            <p>• Sistema Acearia Monitor iniciado...</p>
-            <p>• Recebendo telemetria em tempo real.</p>
-        </div>
-      </div>
+      <p className="text-lg md:text-xl font-medium text-white/90 bg-black/20 px-6 py-2 rounded-full backdrop-blur-sm">
+        {config.subtext}
+      </p>
+
     </div>
   );
 };
