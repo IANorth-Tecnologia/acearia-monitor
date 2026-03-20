@@ -3,7 +3,6 @@ import os
 import time
 import threading
 import queue
-import requests
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
@@ -24,7 +23,6 @@ app.add_middleware(
 
 RTSP_URL = os.getenv("RTSP_URL", "0") 
 MODEL_PATH = "models/pan28.pt"
-ARDUINO_URL = "http://192.168.1.000" 
 
 global_frame = None
 global_status_data = {
@@ -87,8 +85,6 @@ def ai_loop():
         print(f"[IA] Erro Fatal no Modelo: {e}")
         return
 
-    last_arduino_status = None
-
     while True:
         cam = VideoCaptureThread(RTSP_URL)
         if not cam.cap.isOpened():
@@ -101,7 +97,7 @@ def ai_loop():
             frame = cam.read()
             if frame is None: break 
 
-            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, imgsz=480, conf=0.20)
+            bboxes, class_ids, contours, scores = segmentation_engine.detect(frame, imgsz=320, conf=0.20)
             frame_visual = frame.copy()
             
             tem_gancho = False
@@ -109,8 +105,14 @@ def ai_loop():
 
             for bbox, class_id, contour in zip(bboxes, class_ids, contours):
                 if segmentation_engine.classes is None: continue
-                name = str(segmentation_engine.classes.get(class_id, "unknown")).lower()
-                color = segmentation_engine.colors[class_id]
+                
+                raw_name = segmentation_engine.classes.get(class_id, "unknown")
+                name = str(raw_name).lower()
+                
+                if class_id < len(segmentation_engine.colors):
+                    color = segmentation_engine.colors[class_id]
+                else:
+                    color = (255, 255, 255)
                 
                 if 'gancho' in name:
                     tem_gancho = True
@@ -132,18 +134,6 @@ def ai_loop():
                     status = "DESTRAVADO"
                     is_danger = True
                     cv2.putText(frame_visual, "PERIGO", (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
-
-            if status != last_arduino_status:
-                try:
-
-                    endpoint = f"{ARDUINO_URL}/lamp_interface"
-                    dados = {"status": status}
-
-                    requests.post(endpoint, json=dados, timeout=0.5)
-                    print(f"[ARDUINO] Comando enviado: {status}")
-                    last_arduino_status = status
-                except Exception as e:
-                    print("Erro ao comunicar com Arduino")
 
             global_status_data = {
                 "status": status,
@@ -180,7 +170,7 @@ def video_feed():
             time.sleep(0.04)
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace;boundary=frame")
 
-@app.get("api/status", response_model=ArduinoStatusResponse, tags=["Integração Arduino"])
+@app.get("/api/status", response_model=ArduinoStatusResponse, tags=["Integração Arduino"])
 def get_current_status():
     """
     Retorna o status atual da operação na Acearia.
