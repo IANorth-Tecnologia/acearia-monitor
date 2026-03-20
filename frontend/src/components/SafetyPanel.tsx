@@ -9,7 +9,7 @@ interface SafetyPanelProps {
 export const SafetyPanel: React.FC<SafetyPanelProps> = ({ status, isSafe }) => {
   
   const getStatusConfig = () => {
-    if (!isSafe) {
+    if (status.includes("DESTRAVADO") || (!isSafe && status !== "MONITORANDO" && status !== "CONECTANDO...")) {
       return {
         containerClasses: 'bg-red-600 dark:bg-red-700 border-red-500',
         textClasses: 'text-white',
@@ -34,13 +34,12 @@ export const SafetyPanel: React.FC<SafetyPanelProps> = ({ status, isSafe }) => {
     }
 
     return {
-      containerClasses: 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700',
+      containerClasses: 'bg-gray-50 border-gray-200 dark:bg-background-secondary dark:border-background-tertiary',
       textClasses: 'text-gray-600 dark:text-gray-300',
       subTextClasses: 'text-gray-500 dark:text-gray-400 bg-gray-200/50 dark:bg-black/20',
-      
       icon: <FiActivity className="w-24 h-24 mb-4 text-blue-500 dark:text-blue-400" />,
       title: status || "MONITORANDO",
-      subtext: "Aguardando detecção...",
+      subtext: "Aguardando detecção na área...",
       animation: ""
     };
   };
